@@ -1,6 +1,7 @@
 // =====================================================================
 // Mk4 PWA — app.js : la « colle » (aucune logique, juste l'assemblage)
-// Modules 6 (démarrage : clé API + GPS), 7 (appel vocal) et 8 (service worker) branchés.
+// Modules 6 (démarrage : clé API + GPS), 7 (appel vocal), 8 (service worker)
+// et humeur.js (humeur + cœur de Mk4, chargé à part).
 // =====================================================================
 import { creerChat } from "./chat.js";
 import { demanderStockagePersistant } from "./memoire.js";
@@ -16,6 +17,10 @@ async function main() {
   const chat = creerChat();
   demarrerUI({ racine, chat });
   brancherVoix({ racine, chat });      // bouton 📞 dans l'en-tête
+  // Humeur : import à part. Si humeur.js manque ou plante, Mk4 marche comme avant.
+  import("./humeur.js")
+    .then((m) => m.brancherHumeur({ racine, chat }))
+    .catch((e) => console.warn("Humeur indisponible :", e && e.message));
 }
 main();
 
