@@ -135,7 +135,7 @@ export async function ajouterPlusieurs(textes, opts = {}) {
 export async function chercher(question, { espace = ESPACE_DEFAUT, k = 8, seuil = SEUIL_PERTINENCE } = {}) {
   const existants = await tousDe(espace);
   if (!existants.length) return [];          // rien en mémoire : pas d'appel réseau
-  const q = await embed(nettoyer(question) || "?", "RETRIEVAL_QUERY");
+  const q = await embed(nettoyer(question) || "?", "RETRIEVAL_QUERY", { essais: 1, delai: 8000 });
   return existants
     .map((s) => ({ id: s.id, texte: s.texte, date: s.date, score: scalaire(q, s.vecteur) }))
     .filter((r) => r.score >= seuil)

@@ -7,7 +7,7 @@
 //   import { demarrer, lirePosition } from "./demarrage.js";
 //   await demarrer({ racine: document.getElementById("racine") });
 // =====================================================================
-import { lireCle, enregistrerCle, effacerCle, testerCle } from "./gemini.js";
+import { lireCle, enregistrerCle, testerCle } from "./gemini.js";
 
 const CLE_POS = "mk4_position";
 const CLE_GPS = "mk4_gps_etat";     // "ok" | "refuse" | "ignore" (vide = jamais demandé)
@@ -98,16 +98,14 @@ export function demarrer({ racine, forcer = false, nom = "Mk4" } = {}) {
     btnCle.addEventListener("click", async () => {
       const saisie = champ.value.trim();
       if (!saisie) { msgCle.textContent = lireCle() ? "✓ Clé déjà enregistrée" : "Colle d'abord ta clé."; return; }
-      const ancienne = lireCle();
       btnCle.disabled = true;
       msgCle.textContent = "Test de la clé…";
-      enregistrerCle(saisie);
-      const r = await testerCle();
+      const r = await testerCle(saisie);          // teste la clé saisie (pas une ancienne)
       if (r.ok) {
+        enregistrerCle(saisie);
         champ.value = "";
         msgCle.textContent = "✓ Clé valide, enregistrée sur ce téléphone";
       } else {
-        if (ancienne) enregistrerCle(ancienne); else effacerCle();
         msgCle.textContent = "⚠️ " + r.erreur;
       }
       btnCle.disabled = false;

@@ -250,12 +250,14 @@ export function demarrerUI({ racine, chat }) {
       if (r.repli) infos.push(`⚠️ ${selModele.value} indisponible, réponse via ${r.modele}`);
       if (r.memoireIndispo) infos.push("⚠️ mémoire indisponible pour cette réponse");
       if (r.sources.length) infos.push("🌐 recherche web");
-      const m = await r.memorisation;   // l'animation « saving » reste visible jusqu'ici
-      if (moi === numeroEnvoi) {
-        if (m.erreur) infos.push("⚠️ mémorisation échouée : " + m.erreur);
-        else if (m.bilan && m.bilan.ajoutes + m.bilan.mis_a_jour > 0) infos.push(`✓ ${chat.nom} a retenu ${m.bilan.ajoutes + m.bilan.mis_a_jour} info(s)`);
-        etat.textContent = infos.join(" · ");
-      }
+      // La mémorisation continue en fond : on ne bloque plus l'envoi suivant.
+      r.memorisation.then((m) => {
+        if (moi !== numeroEnvoi) return;
+        const suite = infos.slice();
+        if (m.erreur) suite.push("⚠️ mémorisation échouée : " + m.erreur);
+        else if (m.bilan && m.bilan.ajoutes + m.bilan.mis_a_jour > 0) suite.push(`✓ ${chat.nom} a retenu ${m.bilan.ajoutes + m.bilan.mis_a_jour} info(s)`);
+        etat.textContent = suite.join(" · ");
+      });
     } catch (e) {
       fini = true;
       bulle.innerHTML = markdownVersHtml("⚠️ " + (e.message || "Une erreur est survenue, réessaie."));

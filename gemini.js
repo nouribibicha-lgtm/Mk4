@@ -183,6 +183,7 @@ async function appel(
     } catch (e) {
       derniere = e;
       if (e.status === 429) {
+        if (cles.length < 2) throw e;          // une seule clé : inutile de la mettre en pause
         pauses.set(cle, Date.now() + PAUSE_QUOTA);
       } else if (e.refusee) {
         pauses.set(cle, Date.now() + PAUSE_REFUSEE);
@@ -235,6 +236,16 @@ function sources(candidat) {
   return liens.slice(0, 4);
 }
 
+// Réglage de la « réflexion » interne de Gemini (elle ralentit beaucoup les réponses).
+// 2.5 Flash / Flash-Lite : budget 0 ; 2.5 Pro : budget réduit (ne peut pas être coupé) ;
+// 3.x : niveau « low ». Si le modèle refuse (400), on réessaie sans ce réglage.
+function reflexionPour(modele) {
+  if (/gemini-2\.5-pro/.test(modele)) return { thinkingBudget: 2048 };
+  if (/gemini-2\.5/.test(modele)) return { thinkingBudget: 0 };
+  if (/gemini-3/.test(modele)) return { thinkingLevel: "low" };
+  return null;
+}
+
 export async function generer({
   system = "",
   historique = [],
@@ -242,9 +253,10 @@ export async function generer({
   photos = [],
   modele = MODELE_DEFAUT,
   web = false,
-  essais = 4,
+  essais = 3,
   temperature = TEMPERATURE_DEFAUT,
   json = false,
+  delai = 30000,
 }) {
   const contents = historique.map((m) => ({
     role: m.role === "user" ? "user" : "model",
@@ -258,17 +270,20 @@ export async function generer({
 
   let cible = modele;
   let derniere = null;
+  let avecReflexion = true;
 
   for (let i = 0; i < essais; i++) {
     const corps = { contents, generationConfig: { temperature } };
     if (json) corps.generationConfig.responseMimeType = "application/json";
     if (system) corps.systemInstruction = { parts: [{ text: system }] };
+    const refl = avecReflexion ? reflexionPour(cible) : null;
+    if (refl) corps.generationConfig.thinkingConfig = refl;
 
     const avecWeb = web && i < essais - 1;
     if (avecWeb) corps.tools = [{ google_search: {} }];
 
     try {
-      const j = await appel(`models/${cible}:generateContent`, corps);
+      const j = await appel(`models/${cible}:generateContent`, corps, { delai });
       const cand = j.candidates?.[0];
       const texte = (cand?.content?.parts || [])
         .map((p) => p.text || "")
@@ -291,10 +306,14 @@ export async function generer({
       derniere = e;
       console.warn(`⚠ ${cible} : ${e.message}`);
       if (e.fatal) throw e;
+      if (e.status === 400 && /think/i.test(e.message) && avecReflexion) {
+        avecReflexion = false;               // modèle sans ce réglage : on réessaie tout de suite
+        continue;
+      }
       if (cible !== MODELE_DEFAUT) {
         cible = MODELE_DEFAUT;
       } else if (i < essais - 1) {
-        await pause(2 ** (i + 1) * 1000);
+        await pause((i + 1) * 1000);         // 1 s, 2 s (avant : 2, 4, 8 s)
       }
     }
   }
@@ -312,16 +331,16 @@ function normaliser(v) {
   return v.map((x) => x / n);
 }
 
-export async function embed(texte, tache = "RETRIEVAL_DOCUMENT") {
+export async function embed(texte, tache = "RETRIEVAL_DOCUMENT", { essais = 2, delai = 45000 } = {}) {
   let derniere = null;
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < essais; i++) {
     try {
       const j = await appel(`models/${MODELE_EMBED}:embedContent`, {
         model: `models/${MODELE_EMBED}`,
         content: { parts: [{ text: texte }] },
         taskType: tache,
         outputDimensionality: DIMS_EMBED,
-      });
+      }, { delai });
 
       const v = j.embedding?.values;
       if (!v?.length) throw new GeminiError("Embedding vide");
@@ -329,7 +348,7 @@ export async function embed(texte, tache = "RETRIEVAL_DOCUMENT") {
     } catch (e) {
       derniere = e;
       if (e.fatal) throw e;
-      await pause(1500);
+      if (i < essais - 1) await pause(1500);
     }
   }
   throw derniere;
